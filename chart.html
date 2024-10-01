@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sentiment and Emotional Analysis Web App">
+    <title>Sentiment and Emotional Analysis</title>
+    <!-- Import Chart.js and WordCloud2 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/wordcloud2.js"></script>
+    <!-- CSS Styling -->
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f4f8;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        h2 {
+            text-align: center;
+            color: #555;
+            font-size: 1.5em;
+            margin-top: 10px;
+        }
+        #input-container {
+            text-align: center;
+            margin: 20px;
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        #input-container:hover {
+            transform: scale(1.02);
+        }
+        #tweetInput {
+            width: 80%;
+            max-width: 500px;
+            height: 40px;
+            font-size: 16px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            transition: border-color 0.3s ease;
+        }
+        #tweetInput:focus {
+            border-color: #4CAF50;
+            outline: none;
+        }
+        #analyzeButton, #voiceButton {
+            height: 50px;
+            font-size: 16px;
+            margin-left: 10px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s ease, transform 0.2s;
+        }
+        #analyzeButton:hover, #voiceButton:hover {
+            background-color: #45a049;
+            transform: translateY(-2px);
+        }
+        .chart-container {
+            width: 100%;
+            max-width: 600px;
+            margin: 30px auto;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            padding: 20px;
+            transition: transform 0.3s;
+        }
+        .chart-container:hover {
+            transform: scale(1.02);
+        }
+        canvas {
+            margin: 20px auto;
+        }
+        #wordCloud {
+            width: 100%;
+            height: 400px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .result {
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+            margin: 20px 0;
+            transition: color 0.3s;
+        }
+        .result:hover {
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Sentiment  Analysis</h1>
+    <div id="input-container">
+        <input type="text" id="tweetInput" placeholder="Enter your tweet here...">
+        <button id="analyzeButton">Analyze Tweet</button>
+        
+    </div>
+
+    <div id="result-container">
+        <h2 class="result" id="probabilityResult">Sentiment Probabilities: Positive: N/A, Negative: N/A, Neutral: N/A</h2>
+    </div>
+
+    <!-- Visualization Containers -->
+    <!-- Sentiment Charts -->
+    <div class="chart-container">
+        <canvas id="sentimentBarChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="sentimentPieChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="sentimentScatterChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="sentimentRadarChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="sentimentDoughnutChart"></canvas>
+    </div>
+
+    <!-- Emotional Charts -->
+    <div class="chart-container">
+        <canvas id="emotionalBarChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="emotionalLineChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="emotionalRadarChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="emotionalBubbleChart"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="emotionalPolarAreaChart"></canvas>
+    </div>
+
+    <!-- Word Cloud Container -->
+    <div id="wordCloud"></div>
+
+    <script>
+        // Global variables for storing probabilities
+        let positiveProbability = 0, negativeProbability = 0, neutralProbability = 0;
+        let emotions = { 'joy': 0, 'anger': 0, 'sadness': 0, 'fear': 0, 'disgust': 0 };
+
+        // Initialize the Naive Bayes classifier
+        const vocabulary = ['happy', 'joy', 'sad', 'bad', 'good', 'great', 'terrible', 'awesome', 'worst', 'best', 'neutral', 'anger', 'fear', 'disgust', 'love', 'surprise'];
+        const wordProbabilities = {
+            'positive': { 'happy': 0.15, 'joy': 0.12, 'good': 0.1, 'great': 0.2, 'awesome': 0.3, 'best': 0.15 },
+            'negative': { 'sad': 0.25, 'bad': 0.3, 'terrible': 0.2, 'worst': 0.25 },
+            'neutral': { 'neutral': 1.0 },
+            'emotions': {
+                'joy': 0.3, 'anger': 0.2, 'sadness': 0.25, 'fear': 0.15, 'disgust': 0.1
+            }
+        };
+
+        function naiveBayesClassifier(tweet) {
+            // Tokenize the input tweet
+            const words = tweet.split(' ').map(word => word.toLowerCase());
+            const sentimentScores = { 'positive': 1.0, 'negative': 1.0, 'neutral': 1.0 };
+            const emotionScores = { 'joy': 1.0, 'anger': 1.0, 'sadness': 1.0, 'fear': 1.0, 'disgust': 1.0 };
+
+            // Calculate the probability of each word given the sentiment
+            for (let sentiment in sentimentScores) {
+                words.forEach(word => {
+                    if (vocabulary.includes(word)) {
+                        sentimentScores[sentiment] *= (wordProbabilities[sentiment][word] || 1 / vocabulary.length);
+                    }
+                });
+            }
+
+            // Calculate emotion probabilities
+            words.forEach(word => {
+                if (vocabulary.includes(word)) {
+                    for (let emotion in emotionScores) {
+                        emotionScores[emotion] *= (wordProbabilities['emotions'][emotion] || 1 / 5);
+                    }
+                }
+            });
+
+            // Normalize the scores to get probabilities
+            const totalSentimentScore = Object.values(sentimentScores).reduce((acc, score) => acc + score, 0);
+            positiveProbability = sentimentScores['positive'] / totalSentimentScore;
+            negativeProbability = sentimentScores['negative'] / totalSentimentScore;
+            neutralProbability = sentimentScores['neutral'] / totalSentimentScore;
+
+            const totalEmotionScore = Object.values(emotionScores).reduce((acc, score) => acc + score, 0);
+            for (let emotion in emotions) {
+                emotions[emotion] = emotionScores[emotion] / totalEmotionScore;
+            }
+
+            // Return the probabilities
+            return {
+                sentiment: {
+                    positive: positiveProbability,
+                    negative: negativeProbability,
+                    neutral: neutralProbability
+                },
+                emotions
+            };
+        }
+
+        // Event listener for Analyze button
+        document.getElementById('analyzeButton').addEventListener('click', analyzeTweet);
+        document.getElementById('voiceButton').addEventListener('click', startVoiceRecognition);
+
+        function analyzeTweet() {
+            const tweet = document.getElementById('tweetInput').value;
+            const result = naiveBayesClassifier(tweet);
+            positiveProbability = result.sentiment.positive;
+            negativeProbability = result.sentiment.negative;
+            neutralProbability = result.sentiment.neutral;
+
+            // Display the sentiment probabilities
+            document.getElementById('probabilityResult').innerText =
+                `Sentiment Probabilities: Positive: ${positiveProbability.toFixed(2)}, Negative: ${negativeProbability.toFixed(2)}, Neutral: ${neutralProbability.toFixed(2)}`;
+
+            // Create visualizations
+            createSentimentCharts();
+            createEmotionalCharts();
+        }
+
+        function createSentimentCharts() {
+            // Bar Chart Data
+            const sentimentBarData = {
+                labels: ['Positive', 'Negative', 'Neutral'],
+                datasets: [{
+                    label: 'Sentiment Probability',
+                    data: [positiveProbability, negativeProbability, neutralProbability],
+                    backgroundColor: ['#4CAF50', '#F44336', '#FFC107'],
+                }]
+            };
+            createBarChart(sentimentBarData, 'sentimentBarChart');
+
+            // Pie Chart Data
+            const sentimentPieData = {
+                labels: ['Positive', 'Negative', 'Neutral'],
+                datasets: [{
+                    label: 'Sentiment Distribution',
+                    data: [positiveProbability, negativeProbability, neutralProbability],
+                    backgroundColor: ['#4CAF50', '#F44336', '#FFC107'],
+                }]
+            };
+            createPieChart(sentimentPieData, 'sentimentPieChart');
+
+            // Scatter Chart Data
+            const scatterData = [
+                { x: -1, y: negativeProbability },
+                { x: 0, y: neutralProbability },
+                { x: 1, y: positiveProbability }
+            ];
+            createScatterChart(scatterData, 'sentimentScatterChart');
+
+            // Radar Chart Data
+            const sentimentRadarData = {
+                labels: ['Positive', 'Negative', 'Neutral'],
+                datasets: [{
+                    label: 'Sentiment',
+                    data: [positiveProbability, negativeProbability, neutralProbability],
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            };
+            createRadarChart(sentimentRadarData, 'sentimentRadarChart');
+
+            // Doughnut Chart Data
+            const sentimentDoughnutData = {
+                labels: ['Positive', 'Negative', 'Neutral'],
+                datasets: [{
+                    label: 'Sentiment Distribution',
+                    data: [positiveProbability, negativeProbability, neutralProbability],
+                    backgroundColor: ['#4CAF50', '#F44336', '#FFC107'],
+                }]
+            };
+            createDoughnutChart(sentimentDoughnutData, 'sentimentDoughnutChart');
+        }
+
+        function createEmotionalCharts() {
+            // Bar Chart Data for Emotions
+            const emotionalBarData = {
+                labels: Object.keys(emotions),
+                datasets: [{
+                    label: 'Emotional Probability',
+                    data: Object.values(emotions),
+                    backgroundColor: ['#FF5733', '#FFC300', '#DAF7A6', '#C70039', '#581845'],
+                }]
+            };
+            createBarChart(emotionalBarData, 'emotionalBarChart');
+
+            // Line Chart Data for Emotions
+            const emotionalLineData = {
+                labels: Object.keys(emotions),
+                datasets: [{
+                    label: 'Emotional Trend',
+                    data: Object.values(emotions),
+                    fill: false,
+                    borderColor: '#3e95cd',
+                    tension: 0.1
+                }]
+            };
+            createLineChart(emotionalLineData, 'emotionalLineChart');
+
+            // Radar Chart Data for Emotions
+            const emotionalRadarData = {
+                labels: Object.keys(emotions),
+                datasets: [{
+                    label: 'Emotions',
+                    data: Object.values(emotions),
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }]
+            };
+            createRadarChart(emotionalRadarData, 'emotionalRadarChart');
+
+            // Bubble Chart Data for Emotions
+            const emotionalBubbleData = {
+                datasets: [{
+                    label: 'Emotions',
+                    data: Object.keys(emotions).map((emotion, index) => ({
+                        x: index,
+                        y: emotions[emotion],
+                        r: emotions[emotion] * 50 // Size based on probability
+                    })),
+                    backgroundColor: '#FF5733'
+                }]
+            };
+            createBubbleChart(emotionalBubbleData, 'emotionalBubbleChart');
+
+            // Polar Area Chart Data for Emotions
+            const emotionalPolarAreaData = {
+                labels: Object.keys(emotions),
+                datasets: [{
+                    label: 'Emotional Distribution',
+                    data: Object.values(emotions),
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#FF5733', '#FFC300'],
+                }]
+            };
+            createPolarAreaChart(emotionalPolarAreaData, 'emotionalPolarAreaChart');
+        }
+
+        // Function to create a bar chart using Chart.js
+        function createBarChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { enabled: true }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, max: 1 }
+                    }
+                }
+            });
+        }
+
+        // Function to create a pie chart using Chart.js
+        function createPieChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'pie',
+                data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: { enabled: true }
+                    }
+                }
+            });
+        }
+
+        // Function to create a scatter chart using Chart.js
+        function createScatterChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Sentiment Scores',
+                        data: data,
+                        backgroundColor: '#FF5733',
+                        borderColor: '#FF5733',
+                        borderWidth: 1,
+                        showLine: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        x: { title: { display: true, text: 'Sentiment' } },
+                        y: { title: { display: true, text: 'Probability' }, beginAtZero: true, max: 1 }
+                    }
+                }
+            });
+        }
+
+        // Function to create a radar chart using Chart.js
+        function createRadarChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'radar',
+                data,
+                options: {
+                    responsive: true,
+                    scales: {
+                        r: {
+                            min: 0,
+                            max: 1,
+                            ticks: {
+                                stepSize: 0.1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Function to create a doughnut chart using Chart.js
+        function createDoughnutChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { enabled: true }
+                    }
+                }
+            });
+        }
+
+        // Function to create a line chart using Chart.js
+        function createLineChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { enabled: true }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, max: 1 }
+                    }
+                }
+            });
+        }
+
+        // Function to create a bubble chart using Chart.js
+        function createBubbleChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'bubble',
+                data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { enabled: true }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Emotional Index' } },
+                        y: { title: { display: true, text: 'Probability' }, beginAtZero: true, max: 1 }
+                    }
+                }
+            });
+        }
+
+        // Function to create a polar area chart using Chart.js
+        function createPolarAreaChart(data, chartId) {
+            const ctx = document.getElementById(chartId).getContext('2d');
+            new Chart(ctx, {
+                type: 'polarArea',
+                data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { enabled: true }
+                    }
+                }
+            });
+        }
+
+        // Function to create a word cloud
+        function createWordCloud(words) {
+            const wordCloudElement = document.getElementById('wordCloud');
+            WordCloud(wordCloudElement, {
+                list: words.map(word => [word, Math.random() * 100]), // Random frequency
+                gridSize: 10,
+                weightFactor: 10,
+                fontFamily: 'Times, serif',
+                color: () => '#' + Math.floor(Math.random() * 16777215).toString(16),
+                rotateRatio: 0.5,
+                backgroundColor: '#ffffff',
+            });
+        }
+
+        function startVoiceRecognition() {
+            // Add voice recognition functionality here
+        }
+    </script>
+</body>
+</html>
